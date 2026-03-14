@@ -157,3 +157,107 @@ class Environment:
 
         agent.finalize()
         return self.history
+
+
+class DepletionEnvironment(Environment):
+    """Среда с истощением: каждое нажатие на руку уменьшает её payout.
+
+    Parameters
+    ----------
+    depletion_rate:
+        Мультипликативный коэффициент истощения. На каждом шаге после выбора
+        руки k: payouts[k] *= (1 - depletion_rate). Значение остаётся в [0,1].
+    """
+
+    def __init__(
+        self,
+        payouts: Sequence[float],
+        n_trials: int,
+        rng_seed: Optional[int] = None,
+        drift_std: float = 0.0,
+        depletion_rate: float = 0.005,
+    ) -> None:
+        super().__init__(payouts, n_trials, rng_seed=rng_seed, drift_std=drift_std)
+        self.depletion_rate = float(depletion_rate)
+
+    def run(self, agent: AgentProtocol) -> List[StepResult]:
+        self.history = []
+
+        for t in range(self.n_trials):
+            action = int(agent.choose_k())
+            if action < 0 or action >= self.n_arms:
+                raise ValueError(
+                    f"agent returned invalid action={action}; must be in [0, {self.n_arms-1}]"
+                )
+
+            # Сохраняем payouts до истощения, чтобы regret считался корректно
+            payouts_before = self.payouts.copy()
+            reward = self.sample_reward(action)
+
+            # Применяем истощение
+            self.payouts[action] *= (1 - self.depletion_rate)
+
+            # Агент считает regret по payouts ДО истощения
+            agent.payouts = payouts_before
+            agent.update(reward)
+
+            self.history.append(StepResult(t=t, action=action, reward=reward))
+
+        agent.finalize()
+        return self.history
+
+
+class DepletionRecoveryEnvironment(DepletionEnvironment):
+    """Среда с истощением и восстановлением.
+
+    После истощения выбранной руки все руки экспоненциально восстанавливаются
+    к своим базовым значениям:
+        payouts[k] += recovery_rate * (base_payouts[k] - payouts[k])
+
+    Parameters
+    ----------
+    recovery_rate:
+        Скорость восстановления (шаг экспоненциального приближения к базовому).
+    """
+
+    def __init__(
+        self,
+        payouts: Sequence[float],
+        n_trials: int,
+        rng_seed: Optional[int] = None,
+        drift_std: float = 0.0,
+        depletion_rate: float = 0.005,
+        recovery_rate: float = 0.003,
+    ) -> None:
+        super().__init__(
+            payouts, n_trials, rng_seed=rng_seed, drift_std=drift_std,
+            depletion_rate=depletion_rate,
+        )
+        self.recovery_rate = float(recovery_rate)
+
+    def run(self, agent: AgentProtocol) -> List[StepResult]:
+        self.history = []
+
+        for t in range(self.n_trials):
+            action = int(agent.choose_k())
+            if action < 0 or action >= self.n_arms:
+                raise ValueError(
+                    f"agent returned invalid action={action}; must be in [0, {self.n_arms-1}]"
+                )
+
+            payouts_before = self.payouts.copy()
+            reward = self.sample_reward(action)
+
+            # Истощение выбранной руки
+            self.payouts[action] *= (1 - self.depletion_rate)
+
+            # Восстановление всех рук к базовым значениям
+            self.payouts += self.recovery_rate * (self.base_payouts - self.payouts)
+
+            agent.payouts = payouts_before
+            agent.update(reward)
+
+            self.history.append(StepResult(t=t, action=action, reward=reward))
+
+        agent.finalize()
+        return self.history

@@ -14,7 +14,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 import pandas as pd
@@ -39,6 +39,7 @@ def run_single(
     agent_factory: Callable[[int, np.ndarray, int], BaseSampler],
     seed: int,
     drift_std: float = 0.0,
+    env_factory: Optional[Callable[..., Any]] = None,
 ) -> Tuple[pd.DataFrame, RunSummary]:
     """Один прогон: создать среду и агента, выполнить n_trials шагов.
 
@@ -56,6 +57,9 @@ def run_single(
         Seed конкретного прогона.
     drift_std:
         Шум (дрейф) payout'ов внутри среды.
+    env_factory:
+        Опциональная фабрика среды: (payouts_arr, n_trials, seed) -> Environment.
+        Если None, используется стандартный Environment.
 
     Returns
     -------
@@ -66,7 +70,10 @@ def run_single(
     """
 
     payouts_arr = np.asarray(payouts, dtype=float)
-    env = Environment(payouts=payouts_arr, n_trials=n_trials, rng_seed=seed, drift_std=drift_std)
+    if env_factory is not None:
+        env = env_factory(payouts_arr, n_trials, seed)
+    else:
+        env = Environment(payouts=payouts_arr, n_trials=n_trials, rng_seed=seed, drift_std=drift_std)
 
     agent = agent_factory(env.n_arms, env.payouts, seed)
     env.run(agent)
@@ -93,6 +100,7 @@ def run_many(
     n_runs: int = 50,
     base_seed: int = 123,
     drift_std: float = 0.0,
+    env_factory: Optional[Callable[..., Any]] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Запустить несколько агентов много раз и вернуть данные.
 
@@ -115,6 +123,7 @@ def run_many(
                 agent_factory=factory,
                 seed=seed,
                 drift_std=drift_std,
+                env_factory=env_factory,
             )
             all_steps.append(df)
             all_summaries.append(summary.__dict__)
