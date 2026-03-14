@@ -37,7 +37,7 @@ from banditsim.plotting import (
     plot_mean_cumulative_reward,
     plot_total_reward_hist,
 )
-from banditsim.samplers import EGreedy, RandomSampler, ThompsonSampler
+from banditsim.samplers import ABTestSampler, EGreedy, ThompsonSampler
 
 
 def main() -> None:
@@ -53,7 +53,9 @@ def main() -> None:
 
     # Фабрики агентов: чтобы experiment.run_many мог создавать новых агентов на каждый прогон
     agent_factories = {
-        "random": lambda n_arms, p, seed: RandomSampler(n_arms=n_arms, payouts=p, rng_seed=seed),
+        "ab-test": lambda n_arms, p, seed: ABTestSampler(
+            n_arms=n_arms, payouts=p, n_explore=50, rng_seed=seed
+        ),
         "e-greedy": lambda n_arms, p, seed: EGreedy(
             n_arms=n_arms,
             payouts=p,
@@ -87,7 +89,7 @@ def main() -> None:
 
     # --- Пример одного прогона (поведение стратегии) ---
     example_seed = BASE_SEED  # первый прогон
-    plot_actions_scatter(steps_df, agent="random", seed=example_seed)
+    plot_actions_scatter(steps_df, agent="ab-test", seed=example_seed)
     plot_actions_scatter(steps_df, agent="e-greedy", seed=example_seed)
     plot_actions_scatter(steps_df, agent="thompson", seed=example_seed)
 
