@@ -316,7 +316,7 @@ def _draw_block(sf, title, returns, lengths, agent, color):
     gs = sf.add_gridspec(
         4, 4,
         width_ratios=[1, 1, 1, 1],
-        height_ratios=[1.3, 1.3, 1.3, 0.1],
+        height_ratios=[1, 1, 1.99, 0.01],
         top=0.88, bottom=0.11,
         hspace=0.6, wspace=0.35
     )
@@ -352,7 +352,7 @@ def _draw_block(sf, title, returns, lengths, agent, color):
                    for j in range(len(rates))])
     ax_s.bar(xs, rates, width=win_success * 0.8, color=color, alpha=0.8)
     ax_s.set_ylim(0, 1.1)
-    ax_s.set_title(f"Успех ({win_success} эп.)", fontsize=8)
+    ax_s.set_title(f"Успех при обучении, ε=0.2 ({win_success} эп.)", fontsize=8)
     ax_s.set_xlabel("Эпизод", fontsize=7)
     ax_s.set_ylabel("Доля успехов", fontsize=7)
     ax_s.tick_params(labelsize=7)
@@ -443,7 +443,7 @@ def train(env, episodes_count, label):
 
         if ep in (100, 500, 1000, episodes_count):
             success_rate, avg_steps = count_successes(agent, env)
-            print(f"  После {ep:>4} эп. │ Успех: {success_rate*100:.0f}%"
+            print(f"  После {ep:>4} эп. │ Успех (ε=0): {success_rate*100:.0f}%"
                   f"  │ Ср. длина: {avg_steps:.1f} шагов")
 
     return agent, episode_returns, episode_lengths
@@ -503,9 +503,9 @@ def main():
     print("=" * 50)
     print("  Сравнение режимов телепорта")
     print("=" * 50)
-    print(f"  Фиксированный: успех {fixed_stats[0]*100:.0f}%,"
+    print(f"  Фиксированный: успех (ε=0) {fixed_stats[0]*100:.0f}%,"
           f"  ср. путь {fixed_stats[1]:.1f} шагов")
-    print(f"  Случайный    : успех {random_stats[0]*100:.0f}%,"
+    print(f"  Случайный    : успех (ε=0) {random_stats[0]*100:.0f}%,"
           f"  ср. путь {random_stats[1]:.1f} шагов")
 
     # ── Графики ────────────────────────────────────────────────────────────
