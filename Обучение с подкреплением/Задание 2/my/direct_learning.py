@@ -13,8 +13,8 @@ UP    = 0
 DOWN  = 1
 LEFT  = 2
 RIGHT = 3
-ACTION_NAMES    = {UP: "↑", DOWN: "↓", LEFT: "←", RIGHT: "→"}
-ACTION_VECTORS  = {UP: (-1, 0), DOWN: (1, 0), LEFT: (0, -1), RIGHT: (0, 1)}
+ACTION_NAMES   = {UP: "↑", DOWN: "↓", LEFT: "←", RIGHT: "→"}
+ACTION_VECTORS = {UP: (-1, 0), DOWN: (1, 0), LEFT: (0, -1), RIGHT: (0, 1)}
 
 
 class GridWorldTeleport:
@@ -28,20 +28,35 @@ class GridWorldTeleport:
 
     Состояния: (row, col), от (0,0) до (2,2).
     Стартовое состояние : (0, 0) — S
-    Телепорт             : (0, 2) — T → переносит агента в (2, 0)
+    Телепорт             : (0, 2) — T
     Цель (терминал)      : (2, 2) — G, награда +10
     Обычный шаг          : -1
+
+    teleport_mode:
+        "fixed"  — всегда переносит в TELEPORT_DEST = (2, 0)
+        "random" — переносит в случайную клетку (не цель, не сам телепорт)
     """
 
     START         = (0, 0)
     TELEPORT      = (0, 2)
-    TELEPORT_DEST = (2, 0)   # куда переносит телепорт (фиксированный)
+    TELEPORT_DEST = (2, 0)   # назначение фиксированного телепорта
     GOAL          = (2, 2)
 
     ROWS = 3
     COLS = 3
 
-    def __init__(self):
+    def __init__(self, teleport_mode="fixed"):
+        assert teleport_mode in ("fixed", "random"), \
+            "teleport_mode должен быть 'fixed' или 'random'"
+        self.teleport_mode = teleport_mode
+
+        # Все клетки, куда может перенести случайный телепорт
+        self._random_dests = [
+            (r, c)
+            for r in range(self.ROWS)
+            for c in range(self.COLS)
+            if (r, c) not in (self.TELEPORT, self.GOAL)
+        ]
         self.state = self.START
 
     def reset(self):
@@ -55,7 +70,7 @@ class GridWorldTeleport:
 
         Действия: UP=0, DOWN=1, LEFT=2, RIGHT=3.
         При выходе за границы агент остаётся на месте.
-        При попадании на T агент мгновенно переносится в TELEPORT_DEST.
+        При попадании на T агент переносится согласно teleport_mode.
         """
         if self.state == self.GOAL:
             raise ValueError("Эпизод уже завершён. Сначала вызовите reset().")
@@ -81,7 +96,10 @@ class GridWorldTeleport:
 
         # Логика телепорта
         if next_state == self.TELEPORT:
-            next_state = self.TELEPORT_DEST
+            if self.teleport_mode == "fixed":
+                next_state = self.TELEPORT_DEST
+            else:
+                next_state = random.choice(self._random_dests)
 
         self.state = next_state
 
@@ -154,8 +172,8 @@ class MonteCarloAgent:
 
 # ── Текстовый вывод ────────────────────────────────────────────────────────
 
-def print_q_table(agent):
-    print("Таблица Q(s, a):")
+def print_q_table(agent, label=""):
+    print(f"Таблица Q(s, a) [{label}]:")
     env = GridWorldTeleport
     for row in range(env.ROWS):
         for col in range(env.COLS):
@@ -163,17 +181,17 @@ def print_q_table(agent):
             if s == env.GOAL:
                 continue
             q = agent.Q[s]
-            label = " T" if s == env.TELEPORT else "  "
-            print(f"  {label}({row},{col})  "
+            tag = " T" if s == env.TELEPORT else "  "
+            print(f"  {tag}({row},{col})  "
                   f"↑={q[UP]:6.2f}  ↓={q[DOWN]:6.2f}  "
                   f"←={q[LEFT]:6.2f}  →={q[RIGHT]:6.2f}")
     print()
 
 
-def print_policy_grid(agent):
+def print_policy_grid(agent, label=""):
     policy = agent.greedy_policy()
     env = GridWorldTeleport
-    print("Стратегия агента (сетка):")
+    print(f"Стратегия агента [{label}]:")
     for row in range(env.ROWS):
         row_str = "  "
         for col in range(env.COLS):
@@ -210,10 +228,10 @@ def count_successes(agent, env, n_test=200):
     return successes / n_test, avg_steps
 
 
-# ── Графики (все в одном окне) ─────────────────────────────────────────────
+# ── Графики ────────────────────────────────────────────────────────────────
 
-def _draw_policy_ax(ax, agent):
-    """Вспомогательная функция: рисует стратегию на переданном Axes."""
+def _draw_policy_ax(ax, agent, title):
+    """Рисует стратегию агента на переданном Axes."""
     env = GridWorldTeleport
     policy = agent.greedy_policy()
 
@@ -223,7 +241,7 @@ def _draw_policy_ax(ax, agent):
     ax.invert_yaxis()
     ax.set_xticks([])
     ax.set_yticks([])
-    ax.set_title("Стратегия агента")
+    ax.set_title(title)
 
     for row in range(env.ROWS):
         for col in range(env.COLS):
@@ -250,8 +268,7 @@ def _draw_policy_ax(ax, agent):
                 ax.text(cx, cy, "G\n+10", ha="center", va="center",
                         fontsize=10, fontweight="bold")
             elif s == env.TELEPORT:
-                ax.text(cx, cy, f"T\n→{env.TELEPORT_DEST}", ha="center",
-                        va="center", fontsize=8)
+                ax.text(cx, cy, "T", ha="center", va="center", fontsize=10)
             elif s == env.START:
                 act = policy.get(s)
                 ax.text(cx, cy, f"S\n{ACTION_NAMES.get(act, '?')}",
@@ -275,158 +292,227 @@ def _draw_policy_ax(ax, agent):
               bbox_to_anchor=(0.5, -0.04), ncol=3, fontsize=8)
 
 
-def plot_all(episode_returns, episode_lengths, agent):
+def _draw_block(sf, title, returns, lengths, agent, color):
     """
-    Все графики в одном окне (3×3 GridSpec):
+    Рисует один блок (subfigure) с заголовком.
 
-      [0,0] Кривая награды      [0,1] Кривая длины эпизода  [0,2] Успех по окнам
-      [1:3,0] Стратегия         [1,1] Q: UP    [1,2] Q: DOWN
-                                [2,1] Q: LEFT  [2,2] Q: RIGHT
+    Layout (4 строки × 4 колонки):
+      width_ratios  = [1, 1, 1, 1]   — col 1 (стратегия) вдвое шире Q-карт
+      height_ratios = [1, 1, 1, 1]   — 4 равные строки
+
+      col 0 (узкая):   строки 0,1,2 — три графика; строка 3 — пустая
+      col 1 (широкая): строки 0:4   — стратегия (весь блок)
+      cols 2-3:         строки 0:2  — Q↑, Q↓
+                        строки 2:4  — Q←, Q→
     """
     env = GridWorldTeleport
     window = 50
     win_success = 100
-
-    fig = plt.figure(figsize=(14, 9))
-    fig.suptitle("Вариант 9. GridWorld 3×3 с телепортом — результаты обучения",
-                 fontsize=13, fontweight="bold")
-
-    gs = fig.add_gridspec(3, 3, hspace=0.45, wspace=0.35)
-
-    # ── [0,0] Кривая суммарной награды ────────────────────────────────────
-    ax_reward = fig.add_subplot(gs[0, 0])
-    returns_smooth = np.convolve(
-        episode_returns, np.ones(window) / window, mode="valid"
-    )
-    x = np.arange(window, len(episode_returns) + 1)
-    ax_reward.plot(x, returns_smooth, color="steelblue")
-    ax_reward.axhline(0, color="gray", linewidth=0.8, linestyle="--")
-    ax_reward.set_title(f"Награда (ср. окно {window})")
-    ax_reward.set_xlabel("Эпизод")
-    ax_reward.set_ylabel("Суммарная награда")
-    ax_reward.grid(alpha=0.3)
-
-    # ── [0,1] Кривая длины эпизода ────────────────────────────────────────
-    ax_len = fig.add_subplot(gs[0, 1])
-    lengths_smooth = np.convolve(
-        episode_lengths, np.ones(window) / window, mode="valid"
-    )
-    ax_len.plot(x, lengths_smooth, color="darkorange")
-    ax_len.set_title(f"Длина эпизода (ср. окно {window})")
-    ax_len.set_xlabel("Эпизод")
-    ax_len.set_ylabel("Шагов")
-    ax_len.grid(alpha=0.3)
-
-    # ── [0,2] Доля успешных эпизодов по окнам ────────────────────────────
-    ax_succ = fig.add_subplot(gs[0, 2])
-    successes = [1 if r > 0 else 0 for r in episode_returns]
-    rates = [
-        np.mean(successes[i: i + win_success])
-        for i in range(0, len(successes) - win_success + 1, win_success)
-    ]
-    xs = [i * win_success + win_success // 2 for i in range(len(rates))]
-    ax_succ.bar(xs, rates, width=win_success * 0.8,
-                color="mediumseagreen", alpha=0.8)
-    ax_succ.set_ylim(0, 1.05)
-    ax_succ.set_title(f"Успех по окнам ({win_success} эп.)")
-    ax_succ.set_xlabel("Эпизод")
-    ax_succ.set_ylabel("Доля успехов")
-    ax_succ.grid(axis="y", alpha=0.3)
-
-    # ── [1:3, 0] Стратегия со стрелками ──────────────────────────────────
-    ax_policy = fig.add_subplot(gs[1:3, 0])
-    _draw_policy_ax(ax_policy, agent)
-
-    # ── [1,1] [1,2] [2,1] [2,2] Тепловые карты Q ─────────────────────────
-    action_labels = {UP: "↑ UP", DOWN: "↓ DOWN",
+    action_titles = {UP: "↑ UP", DOWN: "↓ DOWN",
                      LEFT: "← LEFT", RIGHT: "→ RIGHT"}
-    positions = [(1, 1), (1, 2), (2, 1), (2, 2)]
 
-    for (r, c), action in zip(positions, [UP, DOWN, LEFT, RIGHT]):
-        ax = fig.add_subplot(gs[r, c])
+    sf.suptitle(title, fontsize=11, fontweight="bold", y=0.96)
+
+    gs = sf.add_gridspec(
+        4, 4,
+        width_ratios=[1, 1, 1, 1],
+        height_ratios=[1.3, 1.3, 1.3, 0.1],
+        top=0.88, bottom=0.11,
+        hspace=0.6, wspace=0.35
+    )
+
+    # ── Награда (col 0, row 0) ─────────────────────────────────────────────
+    ax_r = sf.add_subplot(gs[0, 0])
+    smooth = np.convolve(returns, np.ones(window) / window, mode="valid")
+    x = np.arange(window, len(returns) + 1)
+    ax_r.plot(x, smooth, color=color)
+    ax_r.axhline(0, color="gray", linewidth=0.8, linestyle="--")
+    ax_r.set_title(f"Награда (окно {window})", fontsize=8)
+    ax_r.set_ylabel("Награда", fontsize=7)
+    ax_r.tick_params(labelbottom=False, labelsize=7)
+    ax_r.grid(alpha=0.3)
+
+    # ── Длина эпизода (col 0, row 1) ──────────────────────────────────────
+    ax_l = sf.add_subplot(gs[1, 0])
+    smooth_l = np.convolve(lengths, np.ones(window) / window, mode="valid")
+    ax_l.plot(x, smooth_l, color=color)
+    ax_l.set_title(f"Длина эпизода (окно {window})", fontsize=8)
+    ax_l.set_ylabel("Шагов", fontsize=7)
+    ax_l.tick_params(labelbottom=False, labelsize=7)
+    ax_l.grid(alpha=0.3)
+
+    # ── Успех по окнам (col 0, row 2) ─────────────────────────────────────
+    ax_s = sf.add_subplot(gs[2, 0])
+    successes = [1 if r > 0 else 0 for r in returns]
+    rates = [
+        np.mean(successes[j: j + win_success])
+        for j in range(0, len(successes) - win_success + 1, win_success)
+    ]
+    xs = np.array([j * win_success + win_success // 2
+                   for j in range(len(rates))])
+    ax_s.bar(xs, rates, width=win_success * 0.8, color=color, alpha=0.8)
+    ax_s.set_ylim(0, 1.1)
+    ax_s.set_title(f"Успех ({win_success} эп.)", fontsize=8)
+    ax_s.set_xlabel("Эпизод", fontsize=7)
+    ax_s.set_ylabel("Доля успехов", fontsize=7)
+    ax_s.tick_params(labelsize=7)
+    ax_s.grid(axis="y", alpha=0.3)
+
+    # ── Строка 3, col 0 — пустая ──────────────────────────────────────────
+    sf.add_subplot(gs[3, 0]).set_visible(False)
+
+    # ── Стратегия (col 1, все строки) ─────────────────────────────────────
+    ax_p = sf.add_subplot(gs[0:4, 1])
+    _draw_policy_ax(ax_p, agent, "Стратегия")
+
+    # ── Q-карты (cols 2-3, по 2 строки каждая) ────────────────────────────
+    q_positions = [(0, 2, UP), (0, 3, DOWN), (2, 2, LEFT), (2, 3, RIGHT)]
+    for row, col, action in q_positions:
+        ax = sf.add_subplot(gs[row:row + 2, col])
         grid = np.zeros((env.ROWS, env.COLS))
-        for row in range(env.ROWS):
-            for col in range(env.COLS):
-                s = (row, col)
+        for r in range(env.ROWS):
+            for c in range(env.COLS):
+                s = (r, c)
                 if s != env.GOAL and s in agent.Q:
-                    grid[row, col] = agent.Q[s][action]
+                    grid[r, c] = agent.Q[s][action]
 
         im = ax.imshow(grid, cmap="RdYlGn", vmin=-3, vmax=10)
-        ax.set_title(f"Q: {action_labels[action]}", fontsize=9)
-        ax.set_xticks(range(env.COLS))
+        ax.set_title(action_titles[action], fontsize=8)
         ax.set_yticks(range(env.ROWS))
+        ax.tick_params(labelsize=7)
+        # У верхних карт убираем подписи оси X чтобы не перекрывать заголовки нижних
+        if row == 0:
+            ax.set_xticks(range(env.COLS))
+            ax.tick_params(labelbottom=False)
+        else:
+            ax.set_xticks(range(env.COLS))
 
-        for row in range(env.ROWS):
-            for col in range(env.COLS):
-                s = (row, col)
-                label = "G" if s == env.GOAL else "T" if s == env.TELEPORT else ""
-                val = "" if s == env.GOAL else f"{grid[row, col]:.1f}"
-                ax.text(col, row, f"{label}\n{val}" if label else val,
-                        ha="center", va="center", fontsize=8)
+        for r in range(env.ROWS):
+            for c in range(env.COLS):
+                s = (r, c)
+                lbl = "G" if s == env.GOAL else "T" if s == env.TELEPORT else ""
+                val = "" if s == env.GOAL else f"{grid[r, c]:.1f}"
+                ax.text(c, r, f"{lbl}\n{val}" if lbl else val,
+                        ha="center", va="center", fontsize=7)
 
         plt.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
 
+def plot_comparison(fixed_returns, fixed_lengths, fixed_agent, fixed_stats,
+                    random_returns, random_lengths, random_agent, random_stats):
+    """
+    Два блока (subfigures) — сверху фиксированный телепорт, снизу случайный.
+    Каждый блок: 3 графика | стратегия | 2×2 Q-карты.
+    """
+    FIXED_COLOR  = "steelblue"
+    RANDOM_COLOR = "tomato"
+
+    fig = plt.figure(figsize=(14, 14))
+    outer_gs = fig.add_gridspec(2, 1, hspace=0.18, top=0.99, bottom=0.01)
+    sf_fixed  = fig.add_subfigure(outer_gs[0])
+    sf_random = fig.add_subfigure(outer_gs[1])
+
+    _draw_block(sf_fixed,  "Фиксированный телепорт",
+                fixed_returns,  fixed_lengths,  fixed_agent,  FIXED_COLOR)
+    _draw_block(sf_random, "Случайный телепорт",
+                random_returns, random_lengths, random_agent, RANDOM_COLOR)
+
+
 # ── Главный цикл обучения ─────────────────────────────────────────────────
 
-def main():
-    random.seed(42)
-
-    env   = GridWorldTeleport()
+def train(env, episodes_count, label):
+    """Обучить агента на среде env, вернуть (агент, returns, lengths)."""
     agent = MonteCarloAgent(
         actions=(UP, DOWN, LEFT, RIGHT),
         alpha=0.1,
         gamma=1.0,
         epsilon=0.2
     )
-
-    episodes_count = 2000
-
-    print("=" * 55)
-    print("  Вариант 9. GridWorld 3×3 с телепортом")
-    print("  Карта:  S . T  /  . . .  /  . . G")
-    print(f"  Телепорт T=(0,2) → {GridWorldTeleport.TELEPORT_DEST}")
-    print("=" * 55)
-    print()
-
     episode_returns = []
     episode_lengths = []
+
+    print(f"\n{'─'*50}")
+    print(f"  Обучение: {label}  ({episodes_count} эпизодов)")
+    print(f"{'─'*50}")
 
     for ep in range(1, episodes_count + 1):
         episode = agent.generate_episode(env)
         agent.update_from_episode_every_visit(episode)
-
-        total_reward = sum(r for _, _, r in episode)
-        episode_returns.append(total_reward)
+        episode_returns.append(sum(r for _, _, r in episode))
         episode_lengths.append(len(episode))
 
-        if ep in (100, 500, 1000, 2000):
+        if ep in (100, 500, 1000, episodes_count):
             success_rate, avg_steps = count_successes(agent, env)
-            print(f"─── После {ep:>4} эпизодов "
-                  f"│ Успех: {success_rate*100:.0f}%  "
-                  f"│ Ср. длина: {avg_steps:.1f} шагов ───")
-            print_policy_grid(agent)
+            print(f"  После {ep:>4} эп. │ Успех: {success_rate*100:.0f}%"
+                  f"  │ Ср. длина: {avg_steps:.1f} шагов")
 
-    print("=" * 55)
-    print("  Финальные результаты")
-    print("=" * 55)
-    print_q_table(agent)
-    print_policy_grid(agent)
+    return agent, episode_returns, episode_lengths
 
-    # Анализ телепорта
-    q_01 = agent.Q[(0, 1)]
-    print("Анализ телепорта:")
+
+def main():
+    random.seed(42)
+    episodes_count = 2000
+
+    print("=" * 50)
+    print("  Вариант 9. GridWorld 3×3 с телепортом")
+    print("  Карта:  S . T  /  . . .  /  . . G")
+    print("=" * 50)
+
+    # ── Фиксированный телепорт ─────────────────────────────────────────────
+    env_fixed  = GridWorldTeleport(teleport_mode="fixed")
+    fixed_agent, fixed_returns, fixed_lengths = train(
+        env_fixed, episodes_count, f"фиксированный телепорт → {GridWorldTeleport.TELEPORT_DEST}"
+    )
+    fixed_stats = count_successes(fixed_agent, env_fixed)
+
+    print("\n  Финальная стратегия:")
+    print_q_table(fixed_agent, "фиксированный")
+    print_policy_grid(fixed_agent, "фиксированный")
+
+    q_01 = fixed_agent.Q[(0, 1)]
+    print("Анализ телепорта [фиксированный]:")
     print(f"  Q((0,1), →)={q_01[RIGHT]:.2f}  Q((0,1), ↓)={q_01[DOWN]:.2f}")
     if q_01[RIGHT] > q_01[DOWN]:
-        print("  Вывод: агент предпочитает использовать телепорт — "
-              "он сокращает путь к цели.")
+        print("  Вывод: агент предпочитает использовать телепорт — он сокращает путь к цели.")
     else:
-        print("  Вывод: агент предпочитает обходить телепорт — "
-              "он уводит дальше от цели.")
+        print("  Вывод: агент предпочитает обходить телепорт — он уводит дальше от цели.")
     print()
 
-    # Все графики в одном окне
-    plot_all(episode_returns, episode_lengths, agent)
+    # ── Случайный телепорт ─────────────────────────────────────────────────
+    random.seed(42)
+    env_random = GridWorldTeleport(teleport_mode="random")
+    random_agent, random_returns, random_lengths = train(
+        env_random, episodes_count, "случайный телепорт"
+    )
+    random_stats = count_successes(random_agent, env_random)
+
+    print("\n  Финальная стратегия:")
+    print_q_table(random_agent, "случайный")
+    print_policy_grid(random_agent, "случайный")
+
+    q_01 = random_agent.Q[(0, 1)]
+    print("Анализ телепорта [случайный]:")
+    print(f"  Q((0,1), →)={q_01[RIGHT]:.2f}  Q((0,1), ↓)={q_01[DOWN]:.2f}")
+    if q_01[RIGHT] > q_01[DOWN]:
+        print("  Вывод: агент предпочитает использовать телепорт — он сокращает путь к цели.")
+    else:
+        print("  Вывод: агент предпочитает обходить телепорт — он уводит дальше от цели.")
+    print()
+
+    # ── Итоговое сравнение в консоли ──────────────────────────────────────
+    print("=" * 50)
+    print("  Сравнение режимов телепорта")
+    print("=" * 50)
+    print(f"  Фиксированный: успех {fixed_stats[0]*100:.0f}%,"
+          f"  ср. путь {fixed_stats[1]:.1f} шагов")
+    print(f"  Случайный    : успех {random_stats[0]*100:.0f}%,"
+          f"  ср. путь {random_stats[1]:.1f} шагов")
+
+    # ── Графики ────────────────────────────────────────────────────────────
+    plot_comparison(
+        fixed_returns,  fixed_lengths,  fixed_agent,  fixed_stats,
+        random_returns, random_lengths, random_agent, random_stats,
+    )
     plt.show()
 
 
