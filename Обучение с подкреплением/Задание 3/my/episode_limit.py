@@ -303,12 +303,9 @@ def main():
 ──────────""")
 
     env = GridWorld()
-    last_n = 20
 
     for ms in max_steps_variants:
         rewards, successes, model_sizes, agent = results[ms]
-        avg_reward = sum(rewards[-last_n:]) / last_n
-        success_rate = sum(successes[-last_n:]) / last_n * 100
         model_size = model_sizes[-1]
         max_possible = len(env.actions) * (env.width * env.height - len(env.walls) - 1)
 
