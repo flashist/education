@@ -313,11 +313,44 @@ def main():
         max_possible = len(env.actions) * (env.width * env.height - len(env.walls) - 1)
 
         print(f"\n  max_steps = {ms}")
-        print(f"  ├─ Средняя награда (посл. {last_n} эп.): {avg_reward:6.1f}")
-        print(f"  ├─ Успех          (посл. {last_n} эп.): {success_rate:.0f}%")
         print(f"  ├─ Размер модели: {model_size} пар (s,a) из ~{max_possible} возможных")
         print(f"  └─ Стратегия агента:")
         print_strategy(env, agent)
+
+    checkpoints = [5, 10, 20, 50, 100, 200]
+    window = 50
+
+    # Сводная таблица успеха по контрольным точкам
+    print(f"\n  Доля успешных эпизодов по контрольным точкам (скользящее среднее, окно {window}):")
+    print()
+    header = "  max_steps  │" + "".join(f"  эп. {c:<5}│" for c in checkpoints)
+    separator = "  " + "─" * 11 + "┼" + ("─" * 11 + "┼") * len(checkpoints)
+    print(header)
+    print(separator)
+    for ms in max_steps_variants:
+        _, successes, _, _ = results[ms]
+        row = f"  {ms:<10} │"
+        for c in checkpoints:
+            idx = min(c, len(successes))
+            start = max(0, idx - window)
+            rate = sum(successes[start:idx]) / (idx - start) * 100 if idx > start else 0
+            row += f"  {rate:>5.0f}%   │"
+        print(row)
+    print()
+
+    print(f"  Средняя награда по контрольным точкам (скользящее среднее, окно {window}):")
+    print(header)
+    print(separator)
+    for ms in max_steps_variants:
+        rewards, _, _, _ = results[ms]
+        row = f"  {ms:<10} │"
+        for c in checkpoints:
+            idx = min(c, len(rewards))
+            start = max(0, idx - window)
+            avg = sum(rewards[start:idx]) / (idx - start) if idx > start else 0
+            row += f"  {avg:>7.1f}  │"
+        print(row)
+    print()
 
     print(f"""
 Вывод
