@@ -318,7 +318,7 @@ def main():
     window = 50
 
     # Сводная таблица успеха по контрольным точкам
-    print(f"\n  Доля успешных эпизодов по контрольным точкам (скользящее среднее, окно {window}):")
+    print(f"\n  Доля успешных эпизодов по контрольным точкам (скользящее среднее, окно до {window}):")
     print()
     header = "  max_steps  │" + "".join(f"  эп. {c:<5}│" for c in checkpoints)
     separator = "  " + "─" * 11 + "┼" + ("─" * 11 + "┼") * len(checkpoints)
@@ -335,7 +335,7 @@ def main():
         print(row)
     print()
 
-    print(f"  Средняя награда по контрольным точкам (скользящее среднее, окно {window}):")
+    print(f"  Средняя награда по контрольным точкам (скользящее среднее, окно до {window}):")
     print(header)
     print(separator)
     for ms in max_steps_variants:
